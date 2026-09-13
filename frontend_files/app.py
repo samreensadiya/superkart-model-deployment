@@ -1,21 +1,19 @@
-
 import streamlit as st
 import pandas as pd
 import requests
+import os
 
-# Set page layout and title
 st.set_page_config(page_title="SuperKart Sales Prediction", layout="wide")
 st.title("SuperKart Sales Prediction App")
 
-# Base URL for API endpoints
-API_BASE_URL = "http://backend:7860"
+# Environment-aware URL configuration (defaults to Docker network bridge)
+API_BASE_URL = os.getenv("API_BASE_URL", "http://172.17.0.1:7860")
 
 # -------------------------------------------------------------------
 # Section 1: Single Product Online Prediction
 # -------------------------------------------------------------------
 st.subheader("Single Product Sales Prediction")
 
-# Input fields for product and store data
 col1, col2 = st.columns(2)
 
 with col1:
@@ -50,13 +48,12 @@ if st.button("Predict Sales", type='primary'):
         response = requests.post(f"{API_BASE_URL}/v1/predict", json=product_data)
         if response.status_code == 200:
             result = response.json()
-            # Compatible with both 'Predicted_Sales' and legacy 'Sales' keys
             predicted_sales = result.get("Predicted_Sales", result.get("Sales", 0.0))
             st.success(f"Predicted Product Store Sales Total: ₹{predicted_sales:.2f}")
         else:
-            st.error(f"Error in API request. Status Code: {response.status_code}")
+            st.error(f"Error {response.status_code}: {response.text}")
     except Exception as e:
-        st.error(f"Failed to connect to API: {e}")
+        st.error(f"Failed to connect to API ({API_BASE_URL}): {e}")
 
 # -------------------------------------------------------------------
 # Section 2: Batch Sales Prediction
@@ -70,22 +67,18 @@ if uploaded_file is not None:
     if st.button("Predict Batch", type="primary"):
         with st.spinner("Processing batch predictions..."):
             try:
-                # Prepare file payload for Flask endpoint
                 files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
                 response = requests.post(f"{API_BASE_URL}/v1/batch_predict", files=files)
-
+                
                 if response.status_code == 200:
                     batch_result = response.json()
                     predictions_list = batch_result.get("predictions", [])
-
+                    
                     if predictions_list:
                         batch_df = pd.DataFrame(predictions_list)
                         st.success(f"Successfully generated predictions for {len(batch_df)} records!")
-
-                        # Display output table
                         st.dataframe(batch_df, use_container_width=True)
-
-                        # Provide option to download batch predictions as CSV
+                        
                         csv_data = batch_df.to_csv(index=False).encode('utf-8')
                         st.download_button(
                             label="Download Batch Predictions CSV",
@@ -94,8 +87,8 @@ if uploaded_file is not None:
                             mime="text/csv"
                         )
                     else:
-                        st.warning("API returned response, but no predictions were found.")
+                        st.warning("API responded successfully, but returned 0 records.")
                 else:
-                    st.error(f"Batch API Error: {response.status_code} - {response.text}")
+                    st.error(f"Batch API Error {response.status_code}: {response.text}")
             except Exception as e:
                 st.error(f"Failed to process batch request: {e}")
